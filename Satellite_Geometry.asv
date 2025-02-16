@@ -1,0 +1,75 @@
+function [Distances, Elevation_Angles, Ground_Distances, Visibility, Num_Visible_Sats] = ...
+    Satellite_Geometry(H, Node_Coordinates, oev, Earth_Radius, Time_Vector)
+
+    Num_Satellites = size(oev, 1); 
+    Num_TimeSteps = length(Time_Vector);
+    Num_Nodes = size(Node_Coordinates, 1);
+
+    % 🌍 Convert Ground Node Positions to Cartesian ECEF
+    Node_Positions = zeros(Num_Nodes, 3);
+    for n = 1:Num_Nodes
+        lat = deg2rad(Node_Coordinates(n, 1));
+        lon = deg2rad(Node_Coordinates(n, 2));
+        Node_Positions(n, :) = [
+            Earth_Radius * cos(lat) * cos(lon),
+            Earth_Radius * cos(lat) * sin(lon),
+            Earth_Radius * sin(lat)
+        ];
+    end
+    
+    % ✅ Initialize Output Arrays
+    Distances = zeros(Num_Nodes, Num_TimeSteps);
+    Elevation_Angles = zeros(Num_Nodes, Num_TimeSteps);
+    Ground_Distances = zeros(Num_Nodes, Num_TimeSteps);
+    Visibility = zeros(Num_Nodes, Num_TimeSteps);
+    Num_Visible_Sats = zeros(Num_Nodes, Num_TimeSteps);
+
+    % 🔄 Loop Over Time Steps
+    for t = 1:Num_TimeSteps
+        visible_sats = zeros(Num_Nodes, Num_Satellites);
+        
+        for s = 1:Num_Satellites
+            % ✅ Compute satellite position dynamically at time t
+            Mean_Motion = sqrt(398600.5 / (oev(s, 1))^3);  % Standard gravitational parameter (km^3/s^2)
+            True_Anomaly = oev(s, 6) + Mean_Motion * Time_Vector(t); % Update satellite position over time
+
+            [Sat_X, Sat_Y, Sat_Z] = orbital_to_cartesian(oev(s, 1), oev(s, 2), oev(s, 3), ...
+                                                         oev(s, 5), oev(s, 4), True_Anomaly);
+            Satellite_Position = [Sat_X, Sat_Y, Sat_Z];
+
+            % ✅ Print satellite position for debugging
+            fprintf('⏳ Time %d sec: Sat %d Position -> X = %.2f km, Y = %.2f km, Z = %.2f km\n', ...
+                    Time_Vector(t), s, Sat_X / 1e3, Sat_Y / 1e3, Sat_Z / 1e3);
+
+            for n = 1:Num_Nodes
+                % ✅ Compute Distance Between Node and Satellite
+                Vector = Satellite_Position - Node_Positions(n, :);
+                Distances(n, t) = norm(Vector);
+
+                % ✅ Compute Ground Distance
+                Ground_Distances(n, t) = sqrt(max(0, Distances(n, t)^2 - H^2)); % Ensure no complex values
+
+                % ✅ Compute Elevation Angle (Fixed Incorrect Formula)
+                Elevation_Angles(n, t) = asind(dot(Vector, Node_Positions(n, :)) / ...
+                                               (norm(Vector) * norm(Node_Positions(n, :))));
+
+                % ✅ Debugging: Print elevation calculations
+                fprintf('⏳ Time %d sec: Node %d, Sat %d, Elevation = %.2f°\n', ...
+                        Time_Vector(t), n, s, Elevation_Angles(n, t));
+
+                % ✅ Visibility Condition
+                if Elevation_Angles(n, t) > 10  % Only count satellites above 10° elevation
+                    Visibility(n, t) = 1;
+                    visible_sats(n, s) = 1;
+                end
+            end
+        end
+
+        % ✅ Count Visible Satellites per Node
+        Num_Visible_Sats(:, t) = sum(visible_sats, 2);
+
+        % ✅ Print visibility result for debugging
+        fprintf('⏳ Time %.2f sec: Rome sees %d satellites, Milan sees %d satellites\n', ...
+                Time_Vector(t), Num_Visible_Sats(1, t), Num_Visible_Sats(2, t));
+    end
+end

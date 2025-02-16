@@ -1,0 +1,52 @@
+clear all;
+close all;
+clc;
+
+%% 🌍 Simulation Parameters
+tic
+Simulation_T = 6000;
+Time_Step = 10;
+%Time_Vector = 0:Time_Step:Simulation_T;
+MonteCarlo = 1000;
+Nodes = 2;
+Pkct_Per_Hour = 10;
+%Earth_Radius = 6378e3;
+%Altitude = 1200e3;
+%H = Altitude;
+
+%% 🌍 Ground Nodes (Rome, Milan)
+Node_Coordinates = [
+    41.9028, 12.4964;  % Rome
+    45.4642, 9.1900    % Milan
+];
+
+%% 🛰️ Satellite Constellation (Walker)
+%% 🛰️ Generate Walker Delta Constellation (Move this before calling Satellite_Geometry)
+%% 🛰️ Generate Walker Delta Constellation
+Num_Satellites = 12;
+Num_Planes = 6;
+Orbital_Inclination = 55;
+H = 1200; % Satellite altitude (meters)
+Earth_Radius = 6378e3; % Earth radius (meters)
+Time_Vector = 0:10:6000; % Time simulation vector
+
+oev = walker_delta(Num_Satellites, Num_Planes, 1, 2*pi, 1200e3, deg2rad(Orbital_Inclination));
+
+%% 📡 Call Updated Satellite Geometry Function
+[Distances, Elevation_Angles, Ground_Distances, Visibility, Num_Visible_Sats] = ...
+    Satellite_Geometry(H, Node_Coordinates, oev, Earth_Radius, Time_Vector);
+
+
+% 🏷️ Print Satellite Visibility Debug
+for t = 1:length(Time_Vector)
+    fprintf('Time %.2f sec: Rome sees %d satellites, Milan sees %d satellites\n', ...
+        Time_Vector(t), Num_Visible_Sats(1, t), Num_Visible_Sats(2, t));
+end
+
+%% 📡 Call LoRa Random Access Function
+[ToA, SuccessRate, OverallSuccessRate] = LoRa_Random_Access(Nodes, Num_Satellites, Pkct_Per_Hour, Simulation_T, MonteCarlo, Time_Vector, Visibility, Elevation_Angles);
+
+%% 📊 Display Results
+fprintf('Overall Packet Success Rate for Rome: %.2f%%\n', OverallSuccessRate(1) * 100);
+fprintf('Overall Packet Success Rate for Milan: %.2f%%\n', OverallSuccessRate(2) * 100);
+toc;
